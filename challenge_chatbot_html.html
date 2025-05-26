@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Challenge Chatbot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            padding: 10px;
+            background-color: #f9fafb;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 8px 12px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #dbeafe;
+            text-align: right;
+        }
+        .ai-message {
+            background-color: #e5e7eb;
+            text-align: left;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-2xl bg-orange-400 rounded-lg shadow-lg p-6">
+        <h1 class="text-2xl font-bold text-center text-gray-800 mb-4">AI Challenge Chatbot</h1>
+        <div id="chat-messages" class="mb-4"></div>
+        <div class="flex">
+            <input id="user-input" type="text" class="flex-grow p-2 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Type your message...">
+            <button id="send-button" class="bg-blue-500 text-white p-2 rounded-r-lg hover:bg-blue-600">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        let conversationContext = [];
+
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            messageDiv.classList.add(isUser ? 'user-message' : 'ai-message');
+            messageDiv.textContent = content;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const prompt = userInput.value.trim();
+            if (!prompt) return;
+
+            addMessage(prompt, true);
+            userInput.value = '';
+
+            try {
+                const response = await fetch('http://localhost:5000/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt, context: conversationContext })
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    addMessage(`Error: ${data.error}`);
+                    return;
+                }
+
+                addMessage(data.response);
+                conversationContext.push({ role: 'user', content: prompt });
+                conversationContext.push({ role: 'assistant', content: data.response });
+                if (data.stage && data.stage !== 'complete') {
+                    conversationContext.push({ role: 'system', content: `question_asked: ${data.stage}` });
+                }
+            } catch (error) {
+                addMessage('Error: Could not connect to the server.');
+                console.error(error);
+            }
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        // Initial AI message
+        addMessage('Hello! What’s your problem statement?');
+    </script>
+</body>
+</html>
