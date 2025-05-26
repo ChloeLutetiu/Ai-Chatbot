@@ -17,24 +17,56 @@
             margin: 10px 0;
             padding: 8px 12px;
             border-radius: 5px;
+            max-width: 80%; /* Limit message width */
         }
         .user-message {
             background-color: #dbeafe;
             text-align: right;
+            margin-left: auto; /* Push user messages to the right */
         }
         .ai-message {
             background-color: #e5e7eb;
             text-align: left;
+            margin-right: auto; /* Push AI messages to the left */
+        }
+        .narrative-output {
+            background-color: #fef3c7; /* Light yellow for narrative */
+            border: 1px solid #fde68a;
+            color: #92400e;
+            font-style: italic;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #ffffff;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 8px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-    <div class="w-full max-w-2xl bg-orange-400 rounded-lg shadow-lg p-6">
-        <h1 class="text-2xl font-bold text-center text-gray-800 mb-4">AI Challenge Chatbot</h1>
-        <div id="chat-messages" class="mb-4"></div>
-        <div class="flex">
-            <input id="user-input" type="text" class="flex-grow p-2 border rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Type your message...">
-            <button id="send-button" class="bg-blue-500 text-white p-2 rounded-r-lg hover:bg-blue-600">Send</button>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen font-sans">
+    <div class="w-full max-w-2xl bg-white rounded-lg shadow-xl p-6 border border-orange-300">
+        <h1 class="text-3xl font-extrabold text-center text-gray-800 mb-6">AI Challenge Storyteller</h1>
+        <div id="chat-messages" class="mb-4 rounded-md"></div>
+        <div class="flex space-x-2 mb-4">
+            <input id="user-input" type="text" class="flex-grow p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700" placeholder="Type your message...">
+            <button id="send-button" class="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 transition duration-300 ease-in-out flex items-center justify-center">
+                Send
+            </button>
+        </div>
+        <div class="flex mt-4">
+            <button id="generate-narrative-button" class="bg-purple-600 text-white p-3 rounded-lg hover:bg-purple-700 transition duration-300 ease-in-out w-full flex items-center justify-center" disabled>
+                Generate Challenge Narrative
+                <span id="narrative-loading" class="loading-spinner hidden"></span>
+            </button>
         </div>
     </div>
 
@@ -42,12 +74,20 @@
         const chatMessages = document.getElementById('chat-messages');
         const userInput = document.getElementById('user-input');
         const sendButton = document.getElementById('send-button');
+        const generateNarrativeButton = document.getElementById('generate-narrative-button');
+        const narrativeLoadingSpinner = document.getElementById('narrative-loading');
         let conversationContext = [];
 
-        function addMessage(content, isUser = false) {
+        function addMessage(content, isUser = false, isNarrative = false) {
             const messageDiv = document.createElement('div');
             messageDiv.classList.add('message');
-            messageDiv.classList.add(isUser ? 'user-message' : 'ai-message');
+            if (isUser) {
+                messageDiv.classList.add('user-message');
+            } else if (isNarrative) {
+                messageDiv.classList.add('ai-message', 'narrative-output');
+            } else {
+                messageDiv.classList.add('ai-message');
+            }
             messageDiv.textContent = content;
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -59,6 +99,8 @@
 
             addMessage(prompt, true);
             userInput.value = '';
+            sendButton.disabled = true; // Disable send button during API call
+            userInput.disabled = true; // Disable input during API call
 
             try {
                 const response = await fetch('http://localhost:5000/generate', {
@@ -78,10 +120,45 @@
                 conversationContext.push({ role: 'assistant', content: data.response });
                 if (data.stage && data.stage !== 'complete') {
                     conversationContext.push({ role: 'system', content: `question_asked: ${data.stage}` });
+                } else if (data.stage === 'complete') {
+                    // Enable the narrative generation button when all stages are complete
+                    generateNarrativeButton.disabled = false;
                 }
             } catch (error) {
                 addMessage('Error: Could not connect to the server.');
                 console.error(error);
+            } finally {
+                sendButton.disabled = false; // Re-enable send button
+                userInput.disabled = false; // Re-enable input
+                userInput.focus(); // Focus input for next message
+            }
+        }
+
+        async function generateChallengeNarrative() {
+            generateNarrativeButton.disabled = true;
+            narrativeLoadingSpinner.classList.remove('hidden'); // Show spinner
+
+            try {
+                const response = await fetch('http://localhost:5000/generate_narrative', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ context: conversationContext })
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    addMessage(`Error generating narrative: ${data.error}`);
+                    return;
+                }
+
+                addMessage("Here's a creative narrative for your challenge:", false, false); // A regular AI message
+                addMessage(data.narrative, false, true); // The creative narrative itself
+            } catch (error) {
+                addMessage('Error: Could not connect to the server for narrative generation.');
+                console.error(error);
+            } finally {
+                generateNarrativeButton.disabled = false;
+                narrativeLoadingSpinner.classList.add('hidden'); // Hide spinner
             }
         }
 
@@ -89,6 +166,7 @@
         userInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
         });
+        generateNarrativeButton.addEventListener('click', generateChallengeNarrative);
 
         // Initial AI message
         addMessage('Hello! What’s your problem statement?');
